@@ -13,3 +13,4 @@ uvicorn main:app --reload --port 8080
 Endpoints:
 - `GET /health`
 - `POST /search`
+- `POST /ask` (citation-enforced response shape)
