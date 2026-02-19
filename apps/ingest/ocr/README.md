@@ -1,4 +1,4 @@
-# PaddleOCR Adapter (Scaffold)
+# PaddleOCR Pipeline
 
 ## Purpose
 Improve OCR quality for scanned books, especially Vietnamese/English mixed content.
@@ -6,17 +6,20 @@ Improve OCR quality for scanned books, especially Vietnamese/English mixed conte
 ## Files
 - `paddle_adapter.py` — OCR adapter wrapper
 - `normalize.py` — post-OCR cleanup helpers
+- `pdf_pipeline.py` — PDF rasterization + per-page OCR with provenance
+- `chunker.py` — page-window chunking preserving page_start/page_end
 
-## Usage (example)
-```python
-from apps.ingest.ocr.paddle_adapter import PaddleOCRAdapter
-from apps.ingest.ocr.normalize import normalize_ocr_text
-
-ocr = PaddleOCRAdapter(lang="vi")
-raw = ocr.extract_file("./sample_page.png")
-clean = normalize_ocr_text(raw["text"])
+## Dependencies
+```bash
+pip install paddleocr pymupdf
 ```
 
-## Notes
-- Current scaffold expects image input (or pre-rasterized PDF pages).
-- Next step: add PDF rasterization pipeline + per-page provenance.
+## Usage (PDF end-to-end)
+```bash
+python scripts/ingest_pdf_ocr_demo.py /path/to/book.pdf vi
+```
+
+## Output highlights
+- per-page OCR records with `page`, `ocr_confidence`, `page_start/page_end`
+- merged text
+- provenance-preserving chunks
