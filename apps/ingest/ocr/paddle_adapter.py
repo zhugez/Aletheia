@@ -41,10 +41,33 @@ class PaddleOCRAdapter:
 
         # NOTE: For PDF, PaddleOCR can process page images if rasterized first.
         # This scaffold expects image paths or pre-rasterized pages for now.
-        result = self._ocr.ocr(fp, cls=True)
+        # PaddleOCR API differs across versions. Prefer `predict`, fallback to `ocr`.
+        try:
+            result = self._ocr.predict(fp)
+        except Exception:
+            result = self._ocr.ocr(fp)
 
         lines: list[str] = []
         confs: list[float] = []
+
+        # Newer API returns list[dict] with rec_texts / rec_scores
+        if result and isinstance(result, list) and isinstance(result[0], dict):
+            for page_obj in result:
+                rec_texts = page_obj.get("rec_texts", []) or []
+                rec_scores = page_obj.get("rec_scores", []) or []
+                for i, txt in enumerate(rec_texts):
+                    lines.append(str(txt))
+                    if i < len(rec_scores):
+                        confs.append(float(rec_scores[i]))
+            avg_conf = sum(confs) / len(confs) if confs else 0.0
+            return {
+                "source": os.path.basename(fp),
+                "text": "\n".join(lines),
+                "ocr_confidence": round(avg_conf, 4),
+                "line_count": len(lines),
+            }
+
+        # Legacy API format
         for block in result or []:
             for item in block or []:
                 txt = item[1][0]
