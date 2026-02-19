@@ -2,6 +2,8 @@
 
 ## 1) Start core infra
 ```bash
+docker compose -f infra/docker/docker-compose.yml pull
+
 docker compose -f infra/docker/docker-compose.yml up -d
 ```
 

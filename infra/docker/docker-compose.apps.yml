@@ -1,4 +1,3 @@
-version: "3.9"
 services:
   aletheia-api:
     build: ../../apps/api
@@ -6,6 +5,12 @@ services:
       - PYTHONUNBUFFERED=1
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    restart: unless-stopped
 
   aletheia-bridge:
     build: ../../apps/bridge
@@ -17,11 +22,20 @@ services:
     ports:
       - "8090:8090"
     depends_on:
-      - aletheia-api
+      aletheia-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8090/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    restart: unless-stopped
 
   aletheia-mcp:
     build: ../../apps/mcp_server
     environment:
       - ALETHEIA_API_BASE=http://aletheia-api:8080
     depends_on:
-      - aletheia-api
+      aletheia-api:
+        condition: service_healthy
+    restart: unless-stopped
