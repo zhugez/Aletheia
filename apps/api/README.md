@@ -1,8 +1,15 @@
 # API Service
 
-Planned endpoints:
+Run locally:
+
+```bash
+cd apps/api
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8080
+```
+
+Endpoints:
 - `GET /health`
 - `POST /search`
-- `POST /ask`
-
-`/search` response includes citation-ready chunk metadata.
