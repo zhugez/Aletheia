@@ -1,0 +1,48 @@
+name: Container Security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  trivy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build API image
+        run: docker build -t aletheia-api:ci ./apps/api
+
+      - name: Build Bridge image
+        run: docker build -t aletheia-bridge:ci ./apps/bridge
+
+      - name: Build MCP image
+        run: docker build -t aletheia-mcp:ci ./apps/mcp_server
+
+      - name: Trivy scan API
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: aletheia-api:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+
+      - name: Trivy scan Bridge
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: aletheia-bridge:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+
+      - name: Trivy scan MCP
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: aletheia-mcp:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
