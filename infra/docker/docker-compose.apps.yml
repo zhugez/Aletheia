@@ -1,0 +1,27 @@
+version: "3.9"
+services:
+  aletheia-api:
+    build: ../../apps/api
+    environment:
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8080:8080"
+
+  aletheia-bridge:
+    build: ../../apps/bridge
+    environment:
+      - ALETHEIA_API_BASE=http://aletheia-api:8080
+      - ALETHEIA_BRIDGE_TOKEN=change-me
+      - ALETHEIA_BRIDGE_RATE_LIMIT_PER_MIN=60
+      - ALETHEIA_BRIDGE_TIMEOUT=30
+    ports:
+      - "8090:8090"
+    depends_on:
+      - aletheia-api
+
+  aletheia-mcp:
+    build: ../../apps/mcp_server
+    environment:
+      - ALETHEIA_API_BASE=http://aletheia-api:8080
+    depends_on:
+      - aletheia-api

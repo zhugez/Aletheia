@@ -7,6 +7,12 @@ Thin bridge that exposes Aletheia tools via HTTP endpoints for OpenClaw plugin/t
 - `POST /tool/search_knowledge`
 - `POST /tool/ask_knowledge`
 
+## Security + Reliability
+- Shared secret token (`ALETHEIA_BRIDGE_TOKEN`)
+- Per-client rate limit (`ALETHEIA_BRIDGE_RATE_LIMIT_PER_MIN`, default 60)
+- Upstream retries with exponential backoff
+- Configurable upstream timeout (`ALETHEIA_BRIDGE_TIMEOUT`, default 30s)
+
 ## Run
 ```bash
 cd apps/bridge
