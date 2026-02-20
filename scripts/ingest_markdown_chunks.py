@@ -10,13 +10,15 @@ import re
 import uuid
 from pathlib import Path
 from typing import Any
-from urllib import request
+from urllib import error, request
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Ingest markdown chunks into Postgres/OpenSearch/Qdrant")
     p.add_argument("--input-dir", default="/tmp/aletheia_layout_output")
     p.add_argument("--max-chars", type=int, default=800)
+    p.add_argument("--file", default=None, help="Ingest only one markdown filename inside --input-dir")
+    p.add_argument("--skip-qdrant", action="store_true", help="Skip vector ingest temporarily")
     return p.parse_args()
 
 
@@ -72,6 +74,18 @@ def http_json(method: str, url: str, body: dict[str, Any] | str | None = None, c
     with request.urlopen(req, timeout=10) as resp:
         raw = resp.read().decode("utf-8")
         return json.loads(raw) if raw else {}
+
+
+def wait_http_ready(url: str, tries: int = 20, sleep_s: float = 1.5) -> bool:
+    import time
+
+    for _ in range(tries):
+        try:
+            http_json("GET", url)
+            return True
+        except Exception:
+            time.sleep(sleep_s)
+    return False
 
 
 def ingest_postgres(postgres_url: str, source_id: str, title: str, chunks: list[dict[str, Any]]) -> int:
@@ -146,11 +160,17 @@ def ingest_opensearch(base_url: str, index: str, chunks: list[dict[str, Any]]) -
 
 
 def ingest_qdrant(base_url: str, collection: str, chunks: list[dict[str, Any]]) -> int:
-    http_json(
-        "PUT",
-        f"{base_url.rstrip('/')}/collections/{collection}",
-        {"vectors": {"size": 64, "distance": "Cosine"}},
-    )
+    # Ensure collection exists with expected vector size; ignore already-exists or conflict variants.
+    try:
+        http_json(
+            "PUT",
+            f"{base_url.rstrip('/')}/collections/{collection}",
+            {"vectors": {"size": 64, "distance": "Cosine"}},
+        )
+    except error.HTTPError as e:
+        if e.code not in (400, 409):
+            raise
+
     points = []
     for c in chunks:
         points.append(
@@ -168,6 +188,8 @@ def main() -> int:
     args = parse_args()
     input_dir = Path(args.input_dir)
     files = sorted(input_dir.glob("*.md"))
+    if args.file:
+        files = [f for f in files if f.name == args.file]
     if not files:
         print(f"No markdown files found in {input_dir}")
         return 1
@@ -177,6 +199,11 @@ def main() -> int:
     qdrant_url = os.getenv("QDRANT_URL", "http://localhost:6333")
     opensearch_index = os.getenv("OPENSEARCH_INDEX", "aletheia_chunks")
     qdrant_collection = os.getenv("QDRANT_COLLECTION", "aletheia_chunks")
+
+    # Warm up external engines to avoid cold-start flakiness right after compose up.
+    wait_http_ready(f"{opensearch_url.rstrip('/')}/_cluster/health")
+    if not args.skip_qdrant:
+        wait_http_ready(f"{qdrant_url.rstrip('/')}/collections")
 
     total_pg = total_os = total_qd = 0
     for f in files:
@@ -209,10 +236,11 @@ def main() -> int:
             total_os += ingest_opensearch(opensearch_url, opensearch_index, chunks)
         except Exception as e:
             print(f"[warn] OpenSearch ingest failed for {f.name}: {e}")
-        try:
-            total_qd += ingest_qdrant(qdrant_url, qdrant_collection, chunks)
-        except Exception as e:
-            print(f"[warn] Qdrant ingest failed for {f.name}: {e}")
+        if not args.skip_qdrant:
+            try:
+                total_qd += ingest_qdrant(qdrant_url, qdrant_collection, chunks)
+            except Exception as e:
+                print(f"[warn] Qdrant ingest failed for {f.name}: {e}")
         print(f"Ingested {len(chunks)} chunks from {f.name}")
 
     print(f"Done. Postgres={total_pg} OpenSearch={total_os} Qdrant={total_qd}")
