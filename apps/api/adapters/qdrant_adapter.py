@@ -73,6 +73,7 @@ class QdrantAdapter:
                     },
                 }
             )
+        # Upsert is idempotent and avoids conflict errors on re-ingest.
         self._http("PUT", f"/collections/{self.collection}/points?wait=true", {"points": points})
         return len(points)
 

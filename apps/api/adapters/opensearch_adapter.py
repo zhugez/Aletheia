@@ -71,7 +71,7 @@ class OpenSearchAdapter:
                             "simple_query_string": {
                                 "query": query,
                                 "fields": ["text_content^3", "title^2", "chapter"],
-                                "default_operator": "and",
+                                "default_operator": "or",
                             }
                         }
                     ]
