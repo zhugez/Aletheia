@@ -51,17 +51,6 @@ services:
     image: qdrant/qdrant:v1.12.0
     volumes:
       - aletheia_qdrant_data:/qdrant/storage
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:6333/collections', timeout=3)",
-        ]
-      interval: 15s
-      timeout: 5s
-      retries: 10
     restart: unless-stopped
 
   minio:
@@ -79,6 +68,21 @@ services:
       retries: 8
     restart: unless-stopped
 
+  migrate:
+    image: postgres:16-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aletheia}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: ${POSTGRES_DB:-aletheia}
+    volumes:
+      - ../../schemas:/schemas:ro
+    command: >
+      sh -lc "PGPASSWORD=$$POSTGRES_PASSWORD psql -h postgres -U $$POSTGRES_USER -d $$POSTGRES_DB -f /schemas/metadata.sql"
+    restart: "no"
+
   aletheia-api:
     build:
       context: ../../apps/api
@@ -95,12 +99,14 @@ services:
       CACHE_ENABLED: ${CACHE_ENABLED:-true}
       ALETHEIA_QUEUE: ${ALETHEIA_QUEUE:-aletheia_ingest}
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       opensearch:
         condition: service_healthy
       qdrant:
-        condition: service_healthy
+        condition: service_started
       redis:
         condition: service_healthy
     read_only: true

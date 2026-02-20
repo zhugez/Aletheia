@@ -60,17 +60,6 @@ services:
       - aletheia_qdrant_data:/qdrant/storage
     ports:
       - "6333:6333"
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:6333/collections', timeout=3)",
-        ]
-      interval: 15s
-      timeout: 5s
-      retries: 10
     restart: unless-stopped
 
   minio:
@@ -103,7 +92,7 @@ services:
     volumes:
       - ./schemas:/schemas:ro
     command: >
-      sh -lc "psql -h postgres -U $$POSTGRES_USER -d $$POSTGRES_DB -f /schemas/metadata.sql"
+      sh -lc "PGPASSWORD=$$POSTGRES_PASSWORD psql -h postgres -U $$POSTGRES_USER -d $$POSTGRES_DB -f /schemas/metadata.sql"
     restart: "no"
 
   aletheia-api:
@@ -127,7 +116,7 @@ services:
       opensearch:
         condition: service_healthy
       qdrant:
-        condition: service_healthy
+        condition: service_started
       redis:
         condition: service_healthy
     ports:

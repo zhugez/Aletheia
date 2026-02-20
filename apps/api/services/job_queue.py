@@ -7,11 +7,12 @@ from typing import Any
 
 try:
     from redis import Redis
-    from rq import Queue
+    from rq import Queue, Retry
     from rq.job import Job
 except Exception:  # pragma: no cover
     Redis = None
     Queue = None
+    Retry = None
     Job = None
 
 
@@ -48,7 +49,8 @@ def enqueue_ingest(source_uri: str, source_type: str = "book", metadata: dict[st
         }
 
     payload = {"source_uri": source_uri, "source_type": source_type, "metadata": metadata or {}}
-    job = queue.enqueue("worker.runner.process_ingest_job", payload, retry=3, job_timeout=1200)
+    retry_policy = Retry(max=3) if Retry is not None else None
+    job = queue.enqueue("runner.process_ingest_job", payload, retry=retry_policy, job_timeout=1200)
     return {
         "job_id": job.id,
         "status": "queued",
