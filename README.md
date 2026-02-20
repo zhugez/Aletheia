@@ -7,18 +7,22 @@ Research-grade RAG platform for large-scale book knowledge bases (10k–15k book
 - Citation-first answers (book/chapter/page)
 - Scalable ingestion + hybrid search + reranking
 
-## One-command local startup
+## Architecture (modular monolith)
+- `apps/api` — HTTP API (`/search`, `/ask`, `/ingest`, `/jobs/{id}`)
+- `apps/worker` — background worker process (RQ)
+- shared storage/index backends: Postgres, OpenSearch, Qdrant, Redis, MinIO
+
+## One-command startup
 
 ```bash
 cp .env.example .env
-
 docker compose up -d --build
 ```
 
-That single command will:
-- start Postgres / Redis / OpenSearch / Qdrant / MinIO
-- run DB migration (`schemas/metadata.sql`) via `migrate` service
-- start `aletheia-api` and `aletheia-bridge`
+This brings up everything:
+- infra services
+- migration job (`schemas/metadata.sql`)
+- API + bridge + background worker
 
 ## Verify
 
@@ -27,16 +31,26 @@ curl -sS http://127.0.0.1:8080/health
 curl -sS http://127.0.0.1:8090/health
 ```
 
-## Quick retrieval test
+## Real retrieval benchmark
 
 ```bash
 python3 scripts/benchmark_retrieval_real_case.py
 ```
 
+## Queue example
+
+```bash
+curl -sS -X POST http://127.0.0.1:8080/ingest \
+  -H 'Content-Type: application/json' \
+  -d '{"source_uri":"file:///data/book.pdf","source_type":"book","metadata":{"lang":"vi"}}'
+
+curl -sS http://127.0.0.1:8080/jobs/<job_id>
+```
+
 ## Important files
-- `docker-compose.yml` — unified stack for one-command startup
-- `infra/dokploy/docker-compose.dokploy.yml` — Dokploy deploy stack
-- `docs/DOKPLOY_RUNBOOK.md` — Dokploy deployment steps
+- `docker-compose.yml` — unified local stack
+- `infra/dokploy/docker-compose.dokploy.yml` — Dokploy stack
+- `docs/DOKPLOY_RUNBOOK.md` — Dokploy deployment guide
 
 ## Status
-MVP stack up and retrieval benchmarked with grounded citations.
+MVP upgraded with cache + queue + worker baseline.
