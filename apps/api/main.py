@@ -6,6 +6,23 @@ from uuid import uuid4
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
+try:
+    from .services.retrieval import hybrid_search, synthesize_grounded_answer
+except Exception:
+    try:
+        from services.retrieval import hybrid_search, synthesize_grounded_answer
+    except Exception:
+        # Graceful fallback if retrieval service wiring is unavailable.
+        def hybrid_search(query: str, top_k: int, domain: str | None = None) -> list[dict[str, Any]]:
+            return []
+
+        def synthesize_grounded_answer(question: str, citations: list[dict[str, Any]]) -> tuple[str, str, bool]:
+            return (
+                "I could not find grounded evidence for this question in the indexed corpus.",
+                "low",
+                True,
+            )
+
 app = FastAPI(title="Aletheia API", version="0.2.0")
 
 
@@ -21,32 +38,6 @@ class AskRequest(BaseModel):
     mode: str = Field(default="grounded")
 
 
-def _placeholder_results(query: str, top_k: int) -> list[dict[str, Any]]:
-    results = [
-        {
-            "text": f"Placeholder evidence for query: {query}",
-            "source_id": "demo-source-001",
-            "title": "Demo Book",
-            "author": "Aletheia Team",
-            "chapter": "1",
-            "page_start": 1,
-            "page_end": 2,
-            "score": 0.82,
-        },
-        {
-            "text": "Second evidence snippet for grounding.",
-            "source_id": "demo-source-002",
-            "title": "Research Notes",
-            "author": "Aletheia Team",
-            "chapter": "2",
-            "page_start": 10,
-            "page_end": 11,
-            "score": 0.71,
-        },
-    ]
-    return results[:top_k]
-
-
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "aletheia-api"}
@@ -54,28 +45,19 @@ def health() -> dict[str, str]:
 
 @app.post("/search")
 def search(req: SearchRequest) -> dict[str, Any]:
+    results = hybrid_search(query=req.query, top_k=req.top_k, domain=req.domain)
     return {
         "request_id": str(uuid4()),
         "query": req.query,
         "domain": req.domain,
-        "results": _placeholder_results(req.query, req.top_k),
+        "results": results,
     }
 
 
 @app.post("/ask")
 def ask(req: AskRequest) -> dict[str, Any]:
-    citations = _placeholder_results(req.question, req.top_k)
-    insufficient = len(citations) == 0
-
-    if insufficient:
-        answer = "Insufficient evidence found in the current knowledge base."
-        confidence = "low"
-    else:
-        answer = (
-            "Based on available sources, this is a placeholder grounded answer. "
-            "Replace with synthesis from hybrid retrieval + reranker in next step."
-        )
-        confidence = "medium"
+    citations = hybrid_search(query=req.question, top_k=req.top_k)
+    answer, confidence, insufficient = synthesize_grounded_answer(req.question, citations)
 
     return {
         "request_id": str(uuid4()),

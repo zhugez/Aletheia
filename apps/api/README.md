@@ -12,5 +12,5 @@ uvicorn main:app --reload --port 8080
 
 Endpoints:
 - `GET /health`
-- `POST /search`
-- `POST /ask` (citation-enforced response shape)
+- `POST /search` (hybrid retrieval: OpenSearch BM25 + Qdrant vector, with graceful fallback to empty results)
+- `POST /ask` (grounded synthesis from retrieved chunks + citations; graceful fallback when indexes/services are unavailable)
