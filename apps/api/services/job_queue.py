@@ -82,3 +82,29 @@ def get_job_status(job_id: str) -> dict[str, Any]:
     if job.is_failed:
         result["error"] = job.exc_info
     return result
+
+
+def cancel_job(job_id: str) -> dict[str, Any]:
+    queue = get_queue()
+    if queue is None or Job is None:
+        return {"job_id": job_id, "status": "queue_unavailable"}
+
+    try:
+        job = Job.fetch(job_id, connection=queue.connection)
+        job.cancel()
+        return {"job_id": job_id, "status": "canceled"}
+    except Exception:
+        return {"job_id": job_id, "status": "not_found"}
+
+def retry_job(job_id: str) -> dict[str, Any]:
+    queue = get_queue()
+    if queue is None or Job is None:
+        return {"job_id": job_id, "status": "queue_unavailable"}
+
+    try:
+        from rq.registry import FailedJobRegistry
+        registry = FailedJobRegistry(queue=queue)
+        registry.requeue(job_id)
+        return {"job_id": job_id, "status": "queued"}
+    except Exception:
+        return {"job_id": job_id, "status": "not_found_in_failed_registry"}

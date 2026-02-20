@@ -1,20 +1,23 @@
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, List
 from uuid import uuid4
 
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from pydantic import BaseModel, Field
+import tempfile
+import shutil
+import json
 
 try:
     from .services.cache_store import CacheStore
-    from .services.job_queue import enqueue_ingest, get_job_status
+    from .services.job_queue import enqueue_ingest, get_job_status, retry_job, cancel_job
     from .services.retrieval import hybrid_search, synthesize_grounded_answer
 except Exception:
     try:
         from services.cache_store import CacheStore
-        from services.job_queue import enqueue_ingest, get_job_status
+        from services.job_queue import enqueue_ingest, get_job_status, retry_job, cancel_job
         from services.retrieval import hybrid_search, synthesize_grounded_answer
     except Exception:
         def hybrid_search(query: str, top_k: int, domain: str | None = None) -> list[dict[str, Any]]:
@@ -32,6 +35,12 @@ except Exception:
 
         def get_job_status(job_id: str) -> dict[str, Any]:
             return {"job_id": job_id, "status": "queue_unavailable"}
+            
+        def retry_job(job_id: str) -> dict[str, Any]:
+            return {"job_id": job_id, "status": "queue_unavailable"}
+
+        def cancel_job(job_id: str) -> dict[str, Any]:
+            return {"job_id": job_id, "status": "queue_unavailable"}
 
         class CacheStore:  # type: ignore
             def make_key(self, namespace: str, payload: dict[str, Any]) -> str:
@@ -47,7 +56,17 @@ except Exception:
                 return True
 
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(title="Aletheia API", version="0.3.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 cache = CacheStore()
 SEARCH_CACHE_TTL = int(os.getenv("SEARCH_CACHE_TTL", "300"))
 ASK_CACHE_TTL = int(os.getenv("ASK_CACHE_TTL", "180"))
@@ -131,7 +150,13 @@ def ingest(req: IngestRequest) -> dict[str, Any]:
 def job_status(job_id: str) -> dict[str, Any]:
     return get_job_status(job_id)
 
+@app.post("/jobs/{job_id}/retry")
+def retry_job_endpoint(job_id: str) -> dict[str, Any]:
+    return retry_job(job_id)
 
+@app.post("/jobs/{job_id}/cancel")
+def cancel_job_endpoint(job_id: str) -> dict[str, Any]:
+    return cancel_job(job_id)
 @app.post("/cache/clear")
 def clear_cache(req: CacheClearRequest) -> dict[str, Any]:
     namespace = (req.namespace or "all").strip().lower()
@@ -140,5 +165,117 @@ def clear_cache(req: CacheClearRequest) -> dict[str, Any]:
         return {"status": "ok", "namespace": "all", "deleted": deleted}
     if namespace not in ("search", "ask"):
         return {"status": "error", "message": "namespace must be one of: all, search, ask"}
-    deleted = cache.clear_namespace(namespace)
-    return {"status": "ok", "namespace": namespace, "deleted": deleted}
+@app.post("/upload")
+async def upload_document(file: UploadFile = File(...), source_type: str = "document"):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file uploaded")
+    
+    # Save file to a temporary location
+    temp_dir = tempfile.gettempdir()
+    file_path = os.path.join(temp_dir, file.filename)
+    
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
+    
+    # Send it to the ingest queue (passing the local URI)
+    local_uri = f"file://{file_path}"
+    
+    metadata = {
+        "original_filename": file.filename,
+        "content_type": file.content_type,
+    }
+    
+    result = enqueue_ingest(local_uri, source_type, metadata)
+    return {"status": "ok", "message": "File uploaded successfully", "job": result}
+
+@app.post("/upload/batch")
+async def upload_batch(
+    files: List[UploadFile] = File(...),
+    metadata: str = Form("{}")
+):
+    if not files:
+        raise HTTPException(status_code=400, detail="No files uploaded")
+        
+    try:
+        meta_dict = json.loads(metadata)
+    except Exception:
+        meta_dict = {}
+
+    batch_id = f"b-{str(uuid4())[:8]}"
+    jobs = []
+    
+    temp_dir = tempfile.gettempdir()
+    
+    for file in files:
+        if not file.filename:
+            continue
+            
+        file_path = os.path.join(temp_dir, file.filename)
+        try:
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+                
+            local_uri = f"file://{file_path}"
+            file_meta = {
+                "original_filename": file.filename,
+                "content_type": file.content_type,
+                "batch_id": batch_id,
+                **meta_dict
+            }
+            # Enqueue the job
+            result = enqueue_ingest(local_uri, "document", file_meta)
+            jobs.append({
+                "job_id": result.get("job_id"),
+                "filename": file.filename,
+                "status": result.get("status", "queued")
+            })
+        except Exception as e:
+            # Add as failed if it couldn't even be saved
+            jobs.append({
+                "job_id": None,
+                "filename": file.filename,
+                "status": "failed",
+                "error": str(e)
+            })
+
+    # Save to mock batch store in cache (1 day TTL)
+    cache.set(f"batch:{batch_id}", {"batch_id": batch_id, "jobs": jobs}, 86400)
+        
+    return {"batch_id": batch_id, "jobs": jobs}
+
+@app.get("/upload/batch/{batch_id}")
+async def get_batch_status(batch_id: str):
+    batch_data = cache.get(f"batch:{batch_id}")
+    if not batch_data:
+        raise HTTPException(status_code=404, detail="Batch not found")
+        
+    # Refresh statuses for each job in the batch
+    updated_jobs = []
+    
+    # Cast to ensure Pyre understands it's a dict
+    b_data: dict[str, Any] = dict(batch_data)
+    
+    for job in b_data.get("jobs", []):
+        if job.get("job_id"):
+            current_status = get_job_status(job["job_id"])
+            # merge fresh status
+            job.update(current_status)
+        updated_jobs.append(job)
+        
+    # Compute summary
+    total = len(updated_jobs)
+    done = sum(1 for j in updated_jobs if j.get("status") == "finished")
+    failed = sum(1 for j in updated_jobs if j.get("status") in ["failed", "canceled"])
+    
+    b_data["jobs"] = updated_jobs
+    b_data["summary"] = {
+        "total": total,
+        "done": done,
+        "failed": failed,
+        "in_progress": total - done - failed
+    }
+    
+    return b_data
