@@ -7,17 +7,36 @@ Research-grade RAG platform for large-scale book knowledge bases (10k–15k book
 - Citation-first answers (book/chapter/page)
 - Scalable ingestion + hybrid search + reranking
 
-## Architecture (MVP)
-- `apps/api` — query API (`/search`, `/ask`)
-- `apps/ingest` — ingestion pipeline entrypoint
-- `apps/worker` — background parsing/chunking/indexing
-- `schemas` — DB + metadata schema
-- `infra/docker` — local stack (Postgres, OpenSearch, Qdrant, MinIO, Redis)
+## One-command local startup
 
-## Quick start
-1. Copy `.env.example` to `.env`
-2. Start dependencies via Docker compose
-3. Run migrations and boot API/worker
+```bash
+cp .env.example .env
+
+docker compose up -d --build
+```
+
+That single command will:
+- start Postgres / Redis / OpenSearch / Qdrant / MinIO
+- run DB migration (`schemas/metadata.sql`) via `migrate` service
+- start `aletheia-api` and `aletheia-bridge`
+
+## Verify
+
+```bash
+curl -sS http://127.0.0.1:8080/health
+curl -sS http://127.0.0.1:8090/health
+```
+
+## Quick retrieval test
+
+```bash
+python3 scripts/benchmark_retrieval_real_case.py
+```
+
+## Important files
+- `docker-compose.yml` — unified stack for one-command startup
+- `infra/dokploy/docker-compose.dokploy.yml` — Dokploy deploy stack
+- `docs/DOKPLOY_RUNBOOK.md` — Dokploy deployment steps
 
 ## Status
-Scaffold initialized.
+MVP stack up and retrieval benchmarked with grounded citations.
