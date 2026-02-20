@@ -71,6 +71,10 @@ class IngestRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class CacheClearRequest(BaseModel):
+    namespace: str = Field(default="all")
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
     return {
@@ -126,3 +130,15 @@ def ingest(req: IngestRequest) -> dict[str, Any]:
 @app.get("/jobs/{job_id}")
 def job_status(job_id: str) -> dict[str, Any]:
     return get_job_status(job_id)
+
+
+@app.post("/cache/clear")
+def clear_cache(req: CacheClearRequest) -> dict[str, Any]:
+    namespace = (req.namespace or "all").strip().lower()
+    if namespace in ("all", "*"):
+        deleted = cache.clear_all()
+        return {"status": "ok", "namespace": "all", "deleted": deleted}
+    if namespace not in ("search", "ask"):
+        return {"status": "error", "message": "namespace must be one of: all, search, ask"}
+    deleted = cache.clear_namespace(namespace)
+    return {"status": "ok", "namespace": namespace, "deleted": deleted}

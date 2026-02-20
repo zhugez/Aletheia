@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 
 try:
@@ -21,6 +22,8 @@ def _normalize_score(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def hybrid_search(query: str, top_k: int, domain: str | None = None) -> list[dict[str, Any]]:
     results_by_chunk: dict[str, dict[str, Any]] = {}
+    bm25_weight = float(os.getenv("RETRIEVAL_BM25_WEIGHT", "0.65"))
+    vector_weight = float(os.getenv("RETRIEVAL_VECTOR_WEIGHT", "0.35"))
 
     bm25: list[dict[str, Any]] = []
     vector: list[dict[str, Any]] = []
@@ -38,15 +41,25 @@ def hybrid_search(query: str, top_k: int, domain: str | None = None) -> list[dic
     _normalize_score(bm25)
     _normalize_score(vector)
 
-    for item in bm25 + vector:
+    weighted: list[dict[str, Any]] = []
+    for item in bm25:
+        item = dict(item)
+        item["weighted_score"] = float(item.get("norm_score") or 0.0) * bm25_weight
+        weighted.append(item)
+    for item in vector:
+        item = dict(item)
+        item["weighted_score"] = float(item.get("norm_score") or 0.0) * vector_weight
+        weighted.append(item)
+
+    for item in weighted:
         chunk_id = item.get("chunk_id") or f"fallback-{len(results_by_chunk)}"
         if chunk_id not in results_by_chunk:
             results_by_chunk[chunk_id] = {
                 **item,
-                "hybrid_score": float(item.get("norm_score") or 0.0),
+                "hybrid_score": float(item.get("weighted_score") or 0.0),
             }
             continue
-        results_by_chunk[chunk_id]["hybrid_score"] += float(item.get("norm_score") or 0.0)
+        results_by_chunk[chunk_id]["hybrid_score"] += float(item.get("weighted_score") or 0.0)
 
     merged = sorted(results_by_chunk.values(), key=lambda x: x.get("hybrid_score", 0.0), reverse=True)
     return [
