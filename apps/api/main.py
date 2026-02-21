@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import json
 import os
-from typing import Any, List
+import shutil
+import tempfile
+from pathlib import PurePosixPath
+from typing import Any
 from uuid import uuid4
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-import tempfile
-import shutil
-import json
 
 try:
     from .services.cache_store import CacheStore
@@ -55,17 +57,32 @@ except Exception:
             def is_ready(self) -> bool:
                 return True
 
+            def clear_namespace(self, namespace: str) -> int:
+                return 0
 
-from fastapi.middleware.cors import CORSMiddleware
+            def clear_all(self) -> int:
+                return 0
+
+
+ALLOWED_UPLOAD_EXTENSIONS = {
+    ".pdf", ".epub",
+    ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff",
+}
 
 app = FastAPI(title="Aletheia API", version="0.3.0")
 
+_cors_origins = [
+    o.strip()
+    for o in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:8081,http://localhost:4321").split(",")
+    if o.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 cache = CacheStore()
 SEARCH_CACHE_TTL = int(os.getenv("SEARCH_CACHE_TTL", "300"))
@@ -157,6 +174,8 @@ def retry_job_endpoint(job_id: str) -> dict[str, Any]:
 @app.post("/jobs/{job_id}/cancel")
 def cancel_job_endpoint(job_id: str) -> dict[str, Any]:
     return cancel_job(job_id)
+
+
 @app.post("/cache/clear")
 def clear_cache(req: CacheClearRequest) -> dict[str, Any]:
     namespace = (req.namespace or "all").strip().lower()
@@ -165,21 +184,33 @@ def clear_cache(req: CacheClearRequest) -> dict[str, Any]:
         return {"status": "ok", "namespace": "all", "deleted": deleted}
     if namespace not in ("search", "ask"):
         return {"status": "error", "message": "namespace must be one of: all, search, ask"}
+    deleted = cache.clear_namespace(namespace)
+    return {"status": "ok", "namespace": namespace, "deleted": deleted}
+
+
 @app.post("/upload")
 async def upload_document(file: UploadFile = File(...), source_type: str = "document"):
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file uploaded")
-    
+
+    ext = PurePosixPath(file.filename).suffix.lower()
+    if ext not in ALLOWED_UPLOAD_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type '{ext}'. Allowed: {', '.join(sorted(ALLOWED_UPLOAD_EXTENSIONS))}",
+        )
+
     # Save file to a temporary location
     temp_dir = tempfile.gettempdir()
-    file_path = os.path.join(temp_dir, file.filename)
+    safe_name = PurePosixPath(file.filename).name
+    file_path = os.path.join(temp_dir, f"{uuid4().hex}_{safe_name}")
     
     try:
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
-    
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to save file")
+
     # Send it to the ingest queue (passing the local URI)
     local_uri = f"file://{file_path}"
     
@@ -191,9 +222,10 @@ async def upload_document(file: UploadFile = File(...), source_type: str = "docu
     result = enqueue_ingest(local_uri, source_type, metadata)
     return {"status": "ok", "message": "File uploaded successfully", "job": result}
 
+
 @app.post("/upload/batch")
 async def upload_batch(
-    files: List[UploadFile] = File(...),
+    files: list[UploadFile] = File(...),
     metadata: str = Form("{}")
 ):
     if not files:
@@ -212,8 +244,18 @@ async def upload_batch(
     for file in files:
         if not file.filename:
             continue
-            
-        file_path = os.path.join(temp_dir, file.filename)
+
+        ext = PurePosixPath(file.filename).suffix.lower()
+        if ext not in ALLOWED_UPLOAD_EXTENSIONS:
+            jobs.append({
+                "job_id": None,
+                "filename": file.filename,
+                "status": "rejected",
+                "error": f"Unsupported file type '{ext}'",
+            })
+            continue
+
+        file_path = os.path.join(temp_dir, f"{uuid4().hex}_{PurePosixPath(file.filename).name}")
         try:
             with open(file_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
@@ -232,50 +274,39 @@ async def upload_batch(
                 "filename": file.filename,
                 "status": result.get("status", "queued")
             })
-        except Exception as e:
-            # Add as failed if it couldn't even be saved
+        except Exception:
             jobs.append({
                 "job_id": None,
                 "filename": file.filename,
                 "status": "failed",
-                "error": str(e)
+                "error": "failed to save file"
             })
 
-    # Save to mock batch store in cache (1 day TTL)
     cache.set(f"batch:{batch_id}", {"batch_id": batch_id, "jobs": jobs}, 86400)
-        
     return {"batch_id": batch_id, "jobs": jobs}
 
+
 @app.get("/upload/batch/{batch_id}")
-async def get_batch_status(batch_id: str):
+async def get_batch_status(batch_id: str) -> dict[str, Any]:
     batch_data = cache.get(f"batch:{batch_id}")
     if not batch_data:
         raise HTTPException(status_code=404, detail="Batch not found")
-        
-    # Refresh statuses for each job in the batch
+
     updated_jobs = []
-    
-    # Cast to ensure Pyre understands it's a dict
-    b_data: dict[str, Any] = dict(batch_data)
-    
-    for job in b_data.get("jobs", []):
+    for job in batch_data.get("jobs", []):
         if job.get("job_id"):
-            current_status = get_job_status(job["job_id"])
-            # merge fresh status
-            job.update(current_status)
+            job.update(get_job_status(job["job_id"]))
         updated_jobs.append(job)
-        
-    # Compute summary
+
     total = len(updated_jobs)
     done = sum(1 for j in updated_jobs if j.get("status") == "finished")
-    failed = sum(1 for j in updated_jobs if j.get("status") in ["failed", "canceled"])
-    
-    b_data["jobs"] = updated_jobs
-    b_data["summary"] = {
+    failed = sum(1 for j in updated_jobs if j.get("status") in ("failed", "canceled"))
+
+    batch_data["jobs"] = updated_jobs
+    batch_data["summary"] = {
         "total": total,
         "done": done,
         "failed": failed,
-        "in_progress": total - done - failed
+        "in_progress": total - done - failed,
     }
-    
-    return b_data
+    return batch_data

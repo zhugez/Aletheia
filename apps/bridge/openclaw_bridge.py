@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 import time
 from collections import defaultdict, deque
 from typing import Any
@@ -9,7 +10,7 @@ import requests
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
-ALETHEIA_API_BASE = os.getenv("ALETHEIA_API_BASE", "http://127.0.0.1:8080")
+ALETHEIA_API_BASE = os.getenv("ALETHEIA_API_BASE", "http://127.0.0.1:40007")
 BRIDGE_TOKEN = os.getenv("ALETHEIA_BRIDGE_TOKEN", "change-me")
 REQUEST_TIMEOUT = float(os.getenv("ALETHEIA_BRIDGE_TIMEOUT", "30"))
 RATE_LIMIT_PER_MIN = int(os.getenv("ALETHEIA_BRIDGE_RATE_LIMIT_PER_MIN", "60"))
@@ -29,7 +30,7 @@ class ToolRequest(BaseModel):
 
 
 def _auth(token: str) -> None:
-    if token != BRIDGE_TOKEN:
+    if not secrets.compare_digest(token, BRIDGE_TOKEN):
         raise HTTPException(status_code=401, detail="invalid bridge token")
 
 
@@ -58,9 +59,9 @@ def _forward(path: str, payload: dict[str, Any]) -> dict[str, Any]:
             )
             res.raise_for_status()
             return res.json()
-        except requests.RequestException as e:
+        except requests.RequestException:
             if i == attempts - 1:
-                raise HTTPException(status_code=502, detail=f"upstream error: {e}")
+                raise HTTPException(status_code=502, detail="upstream unavailable")
             time.sleep(backoff * (2**i))
 
     raise HTTPException(status_code=502, detail="upstream unavailable")

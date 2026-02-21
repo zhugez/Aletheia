@@ -3,7 +3,7 @@ services:
     build: ../../apps/api
     environment:
       - PYTHONUNBUFFERED=1
-      - POSTGRES_URL=postgresql://aletheia:aletheia@postgres:5432/aletheia
+      - POSTGRES_URL=postgresql://${POSTGRES_USER:-aletheia}:${POSTGRES_PASSWORD:-aletheia}@postgres:5432/${POSTGRES_DB:-aletheia}
       - OPENSEARCH_URL=http://opensearch:9200
       - OPENSEARCH_INDEX=aletheia_chunks
       - QDRANT_URL=http://qdrant:6333
@@ -34,7 +34,7 @@ services:
     build: ../../apps/bridge
     environment:
       - ALETHEIA_API_BASE=http://aletheia-api:8080
-      - ALETHEIA_BRIDGE_TOKEN=change-me
+      - ALETHEIA_BRIDGE_TOKEN=${ALETHEIA_BRIDGE_TOKEN:-change-me}
       - ALETHEIA_BRIDGE_RATE_LIMIT_PER_MIN=60
       - ALETHEIA_BRIDGE_TIMEOUT=30
     ports:

@@ -8,7 +8,7 @@ services:
     volumes:
       - aletheia_postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "40001:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aletheia} -d ${POSTGRES_DB:-aletheia}"]
       interval: 10s
@@ -22,7 +22,7 @@ services:
     volumes:
       - aletheia_redis_data:/data
     ports:
-      - "6379:6379"
+      - "40002:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -45,8 +45,7 @@ services:
     volumes:
       - aletheia_opensearch_data:/usr/share/opensearch/data
     ports:
-      - "9200:9200"
-      - "9600:9600"
+      - "40003:9200"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9200 >/dev/null || exit 1"]
       interval: 20s
@@ -59,20 +58,21 @@ services:
     volumes:
       - aletheia_qdrant_data:/qdrant/storage
     ports:
-      - "6333:6333"
+      - "40004:6333"
     restart: unless-stopped
 
-  minio:
-    image: minio/minio:RELEASE.2025-01-20T14-49-07Z
+  rustfs:
+    image: rustfs/rustfs:latest
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-minioadmin}
+      SECRET_KEY: ${RUSTFS_SECRET_KEY:-minioadmin}
+      ENABLE_CONSOLE: "true"
     volumes:
-      - aletheia_minio_data:/data
+      - aletheia_rustfs_data:/data
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "40005:9000"
+      - "40006:9001"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9000/minio/health/live >/dev/null || exit 1"]
       interval: 20s
@@ -123,7 +123,7 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "8080:8080"
+      - "40007:8080"
     read_only: true
     tmpfs:
       - /tmp
@@ -156,7 +156,7 @@ services:
       aletheia-api:
         condition: service_healthy
     ports:
-      - "8090:8090"
+      - "40008:8090"
     read_only: true
     tmpfs:
       - /tmp
@@ -176,6 +176,26 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+
+  aletheia-web:
+    build:
+      context: ./apps/web
+    ports:
+      - "40009:80"
+    depends_on:
+      aletheia-api:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/cache/nginx
+      - /var/run
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
 
   aletheia-worker:
     build:
@@ -200,4 +220,4 @@ volumes:
   aletheia_redis_data:
   aletheia_opensearch_data:
   aletheia_qdrant_data:
-  aletheia_minio_data:
+  aletheia_rustfs_data:

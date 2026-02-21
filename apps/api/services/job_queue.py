@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -15,11 +14,9 @@ except Exception:  # pragma: no cover
     Retry = None
     Job = None
 
-
-@dataclass
-class QueueConfig:
-    redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-    queue_name: str = os.getenv("ALETHEIA_QUEUE", "aletheia_ingest")
+_REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+_QUEUE_NAME = os.getenv("ALETHEIA_QUEUE", "aletheia_ingest")
+_queue: Queue | None = None
 
 
 def _utcnow() -> str:
@@ -27,12 +24,20 @@ def _utcnow() -> str:
 
 
 def get_queue() -> Queue | None:
+    global _queue
     if Redis is None or Queue is None:
         return None
+    if _queue is not None:
+        try:
+            _queue.connection.ping()
+            return _queue
+        except Exception:
+            _queue = None
     try:
-        conn = Redis.from_url(QueueConfig().redis_url)
+        conn = Redis.from_url(_REDIS_URL)
         conn.ping()
-        return Queue(QueueConfig().queue_name, connection=conn)
+        _queue = Queue(_QUEUE_NAME, connection=conn)
+        return _queue
     except Exception:
         return None
 
@@ -95,6 +100,7 @@ def cancel_job(job_id: str) -> dict[str, Any]:
         return {"job_id": job_id, "status": "canceled"}
     except Exception:
         return {"job_id": job_id, "status": "not_found"}
+
 
 def retry_job(job_id: str) -> dict[str, Any]:
     queue = get_queue()

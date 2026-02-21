@@ -141,6 +141,7 @@ import Layout from '../layouts/Layout.astro';
 
 <script>
     // --- State ---
+    const API_BASE = import.meta.env.PUBLIC_API_URL || '';
 	let selectedFiles: File[] = [];
     let currentBatchId: string | null = null;
     let pollingInterval: number | null = null;
@@ -172,6 +173,12 @@ import Layout from '../layouts/Layout.astro';
     const completionDesc = document.getElementById('completion-desc')!;
 
     // --- Utilities ---
+    const escapeHtml = (str: string) => {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
     const formatBytes = (bytes: number, decimals = 2) => {
         if (!+bytes) return '0 Bytes'
         const k = 1024
@@ -320,7 +327,7 @@ import Layout from '../layouts/Layout.astro';
         uploadErrorMsg.classList.add('hidden');
 
 		try {
-			const res = await fetch(`http://localhost:8080/upload/batch`, {
+			const res = await fetch(`${API_BASE}/upload/batch`, {
 				method: 'POST',
 				body: formData,
 			});
@@ -362,7 +369,7 @@ import Layout from '../layouts/Layout.astro';
         if (!currentBatchId) return;
 
         try {
-            const res = await fetch(`http://localhost:8080/upload/batch/${currentBatchId}`);
+            const res = await fetch(`${API_BASE}/upload/batch/${currentBatchId}`);
             if (!res.ok) return;
             const data = await res.json();
             updateBoardUI(data);
@@ -389,10 +396,12 @@ import Layout from '../layouts/Layout.astro';
         jobTableBody.innerHTML = '';
         data.jobs.forEach((job: any) => {
             const theme = getStatusTheme(job.status);
-            
+            const safeFilename = escapeHtml(job.filename || '');
+            const safeJobId = escapeHtml(job.job_id || '');
+
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td class="px-6 py-4 font-medium text-slate-800 break-all max-w-xs" title="${job.filename}">${job.filename}</td>
+                <td class="px-6 py-4 font-medium text-slate-800 break-all max-w-xs" title="${safeFilename}">${safeFilename}</td>
                 <td class="px-6 py-4">
                     <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${theme.cls}">
                         <span class="w-1.5 h-1.5 rounded-full mr-1.5 ${theme.dot}"></span>
@@ -400,8 +409,8 @@ import Layout from '../layouts/Layout.astro';
                     </span>
                 </td>
                 <td class="px-6 py-4 text-right space-x-2">
-                    ${job.status === 'failed' ? `<button onclick="window.retryJob('${job.job_id}')" class="text-xs font-bold text-[#F97316] hover:underline uppercase tracking-wide">Retry</button>` : ''}
-                    ${job.status === 'queued' || ['started', 'deferred'].includes(job.status) ? `<button onclick="window.cancelJob('${job.job_id}')" class="text-xs font-bold text-red-500 hover:underline uppercase tracking-wide">Cancel</button>` : ''}
+                    ${job.status === 'failed' ? `<button onclick="window.retryJob('${safeJobId}')" class="text-xs font-bold text-[#F97316] hover:underline uppercase tracking-wide">Retry</button>` : ''}
+                    ${job.status === 'queued' || ['started', 'deferred'].includes(job.status) ? `<button onclick="window.cancelJob('${safeJobId}')" class="text-xs font-bold text-red-500 hover:underline uppercase tracking-wide">Cancel</button>` : ''}
                     ${job.status === 'finished' ? `<span class="text-xs text-green-600 font-bold uppercase tracking-wide">Success</span>` : ''}
                     ${job.status === 'canceled' ? `<span class="text-xs text-gray-500 font-bold uppercase tracking-wide">Stopped</span>` : ''}
                 </td>
@@ -411,12 +420,12 @@ import Layout from '../layouts/Layout.astro';
     }
 
     (window as any).retryJob = async (jobId: string) => {
-        await fetch(`http://localhost:8080/jobs/${jobId}/retry`, { method: 'POST' });
+        await fetch(`${API_BASE}/jobs/${jobId}/retry`, { method: 'POST' });
         fetchBatchStatus(); // fast refresh
     }
 
     (window as any).cancelJob = async (jobId: string) => {
-        await fetch(`http://localhost:8080/jobs/${jobId}/cancel`, { method: 'POST' });
+        await fetch(`${API_BASE}/jobs/${jobId}/cancel`, { method: 'POST' });
         fetchBatchStatus(); // fast refresh
     }
 </script>

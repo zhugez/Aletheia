@@ -62,6 +62,9 @@ class OpenSearchAdapter:
         return len(chunks)
 
     def query(self, query: str, top_k: int = 5, domain: str | None = None) -> list[dict[str, Any]]:
+        if not query.strip():
+            return []
+
         body: dict[str, Any] = {
             "size": top_k,
             "query": {
@@ -80,9 +83,6 @@ class OpenSearchAdapter:
         }
         if domain:
             body["query"]["bool"]["filter"] = [{"term": {"domain.keyword": domain}}]
-
-        if not query.strip():
-            return []
 
         res = self._http("POST", f"/{self.index_name}/_search", body)
         out: list[dict[str, Any]] = []
