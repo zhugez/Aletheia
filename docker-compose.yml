@@ -202,7 +202,8 @@ services:
 
   aletheia-worker:
     build:
-      context: ./apps/worker
+      context: .
+      dockerfile: ./apps/worker/Dockerfile
     user: "0:0"
     environment:
       REDIS_URL: redis://redis:6379/0

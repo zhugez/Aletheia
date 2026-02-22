@@ -3,7 +3,7 @@ FROM python:3.11-slim AS builder
 ENV PIP_NO_CACHE_DIR=1
 WORKDIR /app
 
-COPY requirements.txt .
+COPY apps/worker/requirements.txt ./requirements.txt
 RUN pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.txt
 
 FROM python:3.11-slim
@@ -18,7 +18,8 @@ RUN useradd -m appuser
 COPY --from=builder /wheels /wheels
 RUN pip install --no-cache-dir --no-index --find-links=/wheels /wheels/* && rm -rf /wheels
 
-COPY . .
+COPY . /app
+WORKDIR /app/apps/worker
 USER appuser
 
 CMD ["python", "worker.py"]
