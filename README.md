@@ -54,3 +54,14 @@ curl -sS http://127.0.0.1:8080/jobs/<job_id>
 
 ## Status
 MVP upgraded with cache + queue + worker baseline.
+
+
+## MinerU Full Ingest (one command)
+
+```bash
+python3 scripts/ingest_pdf_full_mineru.py /path/to/book.pdf --out /tmp/aletheia_mineru_output --backend pipeline
+```
+
+This runs end-to-end:
+1. MinerU parse (PDF -> merged markdown)
+2. Markdown chunk ingest into Postgres/OpenSearch/Qdrant
