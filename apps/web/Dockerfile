@@ -14,6 +14,8 @@ RUN npm run build
 FROM nginx:alpine
 # Copy built static files to Nginx public folder
 COPY --from=builder /app/dist /usr/share/nginx/html
+# Override server config to support larger upload bodies.
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Expose port and start nginx
 EXPOSE 80
