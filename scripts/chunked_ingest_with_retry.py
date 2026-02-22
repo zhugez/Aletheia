@@ -7,8 +7,11 @@ import time
 from io import BytesIO
 from pathlib import Path
 
+import os
 import requests
 from pypdf import PdfReader, PdfWriter
+
+from apps.ingest.connectors.mineru_connector import parse_pdf_with_mineru
 
 API_URL = "https://kdv9r7ndp1a2v19f.aistudio-app.com/layout-parsing"
 
@@ -43,7 +46,8 @@ def chunk_pdf(path: Path, chunk_pages: int):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("pdf")
-    ap.add_argument("--token", required=True)
+    ap.add_argument("--token", default=os.getenv("ALETHEIA_LAYOUT_API_TOKEN", ""))
+    ap.add_argument("--engine", choices=["mineru", "aistudio"], default=os.getenv("INGEST_PDF_ENGINE", "mineru"))
     ap.add_argument("--chunk-pages", type=int, default=4)
     ap.add_argument("--retries", type=int, default=3)
     ap.add_argument("--timeout", type=int, default=180)
@@ -55,6 +59,27 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     state_file = out_dir / f"{src.stem}.state.json"
     merged_md = out_dir / f"{src.stem}.merged.md"
+
+    if args.engine == "mineru":
+        res = parse_pdf_with_mineru(src, out_dir / src.stem, backend=os.getenv("INGEST_PDF_BACKEND", "pipeline"))
+        merged_md.write_text(res.get("merged_markdown", ""), encoding="utf-8")
+        state = {
+            "source": src.name,
+            "engine": "mineru",
+            "chunks": [
+                {"start": 1, "end": 1, "status": "ok", "file": str(merged_md), "note": "mineru merged"}
+            ],
+        }
+        state_file.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(json.dumps({
+            "source": src.name,
+            "engine": "mineru",
+            "chunks_ok": 1,
+            "chunks_total": 1,
+            "state": str(state_file),
+            "merged": str(merged_md),
+        }, ensure_ascii=False, indent=2))
+        return
 
     state = {"source": src.name, "chunks": []}
     if state_file.exists():
