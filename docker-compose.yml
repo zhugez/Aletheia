@@ -190,8 +190,7 @@ services:
       - /tmp
       - /var/cache/nginx
       - /var/run
-    cap_drop:
-      - ALL
+    # nginx entrypoint performs chown on temp dirs; dropping all caps can fail startup.
     security_opt:
       - no-new-privileges:true
     restart: unless-stopped
