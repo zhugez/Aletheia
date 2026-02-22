@@ -141,7 +141,8 @@ import Layout from '../layouts/Layout.astro';
 
 <script>
     // --- State ---
-    const API_BASE = import.meta.env.PUBLIC_API_URL || '';
+    // Default to nginx reverse-proxy path to avoid cross-origin and wrong-port 405s.
+    const API_BASE = import.meta.env.PUBLIC_API_URL || '/api';
 	let selectedFiles: File[] = [];
     let currentBatchId: string | null = null;
     let pollingInterval: number | null = null;
