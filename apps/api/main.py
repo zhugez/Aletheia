@@ -3,8 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import tempfile
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Any
 from uuid import uuid4
 
@@ -200,10 +199,11 @@ async def upload_document(file: UploadFile = File(...), source_type: str = "docu
             detail=f"Unsupported file type '{ext}'. Allowed: {', '.join(sorted(ALLOWED_UPLOAD_EXTENSIONS))}",
         )
 
-    # Save file to a temporary location
-    temp_dir = tempfile.gettempdir()
+    # Save file to shared upload directory so worker container can access it.
+    upload_dir = Path(os.getenv("INGEST_UPLOAD_DIR", "/shared/uploads"))
+    upload_dir.mkdir(parents=True, exist_ok=True)
     safe_name = PurePosixPath(file.filename).name
-    file_path = os.path.join(temp_dir, f"{uuid4().hex}_{safe_name}")
+    file_path = str(upload_dir / f"{uuid4().hex}_{safe_name}")
     
     try:
         with open(file_path, "wb") as buffer:
@@ -239,8 +239,9 @@ async def upload_batch(
     batch_id = f"b-{str(uuid4())[:8]}"
     jobs = []
     
-    temp_dir = tempfile.gettempdir()
-    
+    upload_dir = Path(os.getenv("INGEST_UPLOAD_DIR", "/shared/uploads"))
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
     for file in files:
         if not file.filename:
             continue
@@ -255,7 +256,7 @@ async def upload_batch(
             })
             continue
 
-        file_path = os.path.join(temp_dir, f"{uuid4().hex}_{PurePosixPath(file.filename).name}")
+        file_path = str(upload_dir / f"{uuid4().hex}_{PurePosixPath(file.filename).name}")
         try:
             with open(file_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)

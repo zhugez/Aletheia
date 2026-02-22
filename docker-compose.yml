@@ -100,6 +100,7 @@ services:
       context: ./apps/api
     environment:
       PYTHONUNBUFFERED: "1"
+      INGEST_UPLOAD_DIR: /shared/uploads
       POSTGRES_URL: postgresql://${POSTGRES_USER:-aletheia}:${POSTGRES_PASSWORD:-aletheia}@postgres:5432/${POSTGRES_DB:-aletheia}
       OPENSEARCH_URL: http://opensearch:9200
       OPENSEARCH_INDEX: ${OPENSEARCH_INDEX:-aletheia_chunks}
@@ -127,6 +128,8 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    volumes:
+      - aletheia_shared_data:/shared
     cap_drop:
       - ALL
     security_opt:
@@ -202,12 +205,28 @@ services:
     environment:
       REDIS_URL: redis://redis:6379/0
       ALETHEIA_QUEUE: ${ALETHEIA_QUEUE:-aletheia_ingest}
+      POSTGRES_URL: postgresql://${POSTGRES_USER:-aletheia}:${POSTGRES_PASSWORD:-aletheia}@postgres:5432/${POSTGRES_DB:-aletheia}
+      OPENSEARCH_URL: http://opensearch:9200
+      OPENSEARCH_INDEX: ${OPENSEARCH_INDEX:-aletheia_chunks}
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-aletheia_chunks}
+      INGEST_OUTPUT_DIR: /shared/output
+      INGEST_PDF_BACKEND: ${INGEST_PDF_BACKEND:-pipeline}
+      INGEST_MAX_CHARS: ${INGEST_MAX_CHARS:-800}
     depends_on:
       redis:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      postgres:
         condition: service_healthy
     read_only: true
     tmpfs:
       - /tmp
+    volumes:
+      - aletheia_shared_data:/shared
     cap_drop:
       - ALL
     security_opt:
@@ -220,3 +239,4 @@ volumes:
   aletheia_opensearch_data:
   aletheia_qdrant_data:
   aletheia_rustfs_data:
+  aletheia_shared_data:
