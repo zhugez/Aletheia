@@ -53,14 +53,15 @@ services:
       - aletheia_qdrant_data:/qdrant/storage
     restart: unless-stopped
 
-  minio:
-    image: minio/minio:RELEASE.2025-01-20T14-49-07Z
+  rustfs:
+    image: rustfs/rustfs:latest
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-me}
+      ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-minioadmin}
+      SECRET_KEY: ${RUSTFS_SECRET_KEY:-change-me}
+      ENABLE_CONSOLE: "true"
     volumes:
-      - aletheia_minio_data:/data
+      - aletheia_rustfs_data:/data
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9000/minio/health/live >/dev/null || exit 1"]
       interval: 20s

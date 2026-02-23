@@ -62,12 +62,11 @@ services:
     restart: unless-stopped
 
   rustfs:
-    image: rustfs/rustfs:latest
+    image: minio/minio:RELEASE.2025-01-20T14-49-07Z
     command: server /data --console-address ":9001"
     environment:
-      ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-minioadmin}
-      SECRET_KEY: ${RUSTFS_SECRET_KEY:-minioadmin}
-      ENABLE_CONSOLE: "true"
+      MINIO_ROOT_USER: ${RUSTFS_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${RUSTFS_SECRET_KEY:-minioadmin}
     volumes:
       - aletheia_rustfs_data:/data
     ports:
@@ -194,7 +193,13 @@ services:
       - /tmp
       - /var/cache/nginx
       - /var/run
-    # nginx entrypoint performs chown on temp dirs; dropping all caps can fail startup.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - NET_BIND_SERVICE
     security_opt:
       - no-new-privileges:true
     restart: unless-stopped
