@@ -10,7 +10,7 @@ Research-grade RAG platform for large-scale book knowledge bases (10k–15k book
 ## Architecture (modular monolith)
 - `apps/api` — HTTP API (`/search`, `/ask`, `/ingest`, `/jobs/{id}`)
 - `apps/worker` — background worker process (RQ)
-- shared storage/index backends: Postgres, OpenSearch, Qdrant, Redis, MinIO
+- shared storage/index backends: Postgres, OpenSearch, Qdrant, Redis, RustFS
 
 ## One-command startup
 
@@ -27,8 +27,8 @@ This brings up everything:
 ## Verify
 
 ```bash
-curl -sS http://127.0.0.1:8080/health
-curl -sS http://127.0.0.1:8090/health
+curl -sS http://127.0.0.1:40007/health
+curl -sS http://127.0.0.1:40008/health
 ```
 
 ## Real retrieval benchmark
@@ -40,11 +40,11 @@ python3 scripts/benchmark_retrieval_real_case.py
 ## Queue example
 
 ```bash
-curl -sS -X POST http://127.0.0.1:8080/ingest \
+curl -sS -X POST http://127.0.0.1:40007/ingest \
   -H 'Content-Type: application/json' \
   -d '{"source_uri":"file:///data/book.pdf","source_type":"book","metadata":{"lang":"vi"}}'
 
-curl -sS http://127.0.0.1:8080/jobs/<job_id>
+curl -sS http://127.0.0.1:40007/jobs/<job_id>
 ```
 
 ## Important files

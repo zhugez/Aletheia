@@ -55,15 +55,15 @@ services:
 
   rustfs:
     image: rustfs/rustfs:latest
-    command: server /data --console-address ":9001"
     environment:
-      ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-minioadmin}
-      SECRET_KEY: ${RUSTFS_SECRET_KEY:-change-me}
-      ENABLE_CONSOLE: "true"
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-change-me}
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
     volumes:
       - aletheia_rustfs_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9000/minio/health/live >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/health >/dev/null || exit 1"]
       interval: 20s
       timeout: 5s
       retries: 8
@@ -209,5 +209,5 @@ volumes:
   aletheia_redis_data:
   aletheia_opensearch_data:
   aletheia_qdrant_data:
-  aletheia_minio_data:
+  aletheia_rustfs_data:
   aletheia_shared_data:
