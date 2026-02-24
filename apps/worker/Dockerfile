@@ -11,7 +11,8 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    MINERU_DEVICE_MODE=cpu
 
 WORKDIR /app
 RUN apt-get update && \
