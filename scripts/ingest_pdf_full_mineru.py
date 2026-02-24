@@ -27,10 +27,13 @@ def main() -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
+    # Resolve script paths relative to this file (repo root /app/scripts/)
+    _scripts = Path(__file__).resolve().parent
+
     # Step 1: parse with MinerU
     run([
         "python3",
-        "scripts/ingest_pdf_mineru_demo.py",
+        str(_scripts / "ingest_pdf_mineru_demo.py"),
         str(pdf),
         "--out",
         str(out),
@@ -45,7 +48,7 @@ def main() -> int:
     # Step 2: index markdown into retrieval stores
     run([
         "python3",
-        "scripts/ingest_markdown_chunks.py",
+        str(_scripts / "ingest_markdown_chunks.py"),
         "--input-dir",
         str(out),
         "--file",
