@@ -14,6 +14,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app
 
 WORKDIR /app
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libgl1 libglib2.0-0 libsm6 libxrender1 libxext6 curl && \
+    rm -rf /var/lib/apt/lists/*
 RUN useradd -m appuser
 
 COPY --from=builder /wheels /wheels
