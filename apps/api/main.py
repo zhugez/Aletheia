@@ -311,3 +311,39 @@ async def get_batch_status(batch_id: str) -> dict[str, Any]:
         "in_progress": total - done - failed,
     }
     return batch_data
+
+
+@app.post("/upload/batch/{batch_id}/retry-failed")
+async def retry_failed_batch_jobs(batch_id: str) -> dict[str, Any]:
+    batch_data = cache.get(f"batch:{batch_id}")
+    if not batch_data:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    retried = 0
+    skipped = 0
+    jobs: list[dict[str, Any]] = batch_data.get("jobs", [])
+
+    for job in jobs:
+        status = str(job.get("status", "")).lower()
+        job_id = job.get("job_id")
+        if status not in ("failed", "canceled"):
+            skipped += 1
+            continue
+        if not job_id:
+            skipped += 1
+            continue
+
+        res = retry_job(job_id)
+        job.update({
+            "retry_requested": True,
+            "retry_result": res.get("status", "unknown"),
+        })
+        retried += 1
+
+    cache.set(f"batch:{batch_id}", batch_data, 86400)
+    return {
+        "batch_id": batch_id,
+        "retried": retried,
+        "skipped": skipped,
+        "status": "ok",
+    }
